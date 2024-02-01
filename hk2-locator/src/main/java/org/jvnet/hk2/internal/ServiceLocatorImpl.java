@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2024 Contributors to Eclipse Foundation.
  * Copyright (c) 2012, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This program and the accompanying materials are made available under the
@@ -170,7 +171,6 @@ public class ServiceLocatorImpl implements ServiceLocator {
     private final Map<ServiceLocatorImpl, ServiceLocatorImpl> children =
             new WeakHashMap<ServiceLocatorImpl, ServiceLocatorImpl>(); // Must be Weak for throw away children
 
-    private final Object classAnalyzerLock = new Object();
     private final HashMap<String, ClassAnalyzer> classAnalyzers =
             new HashMap<String, ClassAnalyzer>();
     private String defaultClassAnalyzer = ClassAnalyzer.DEFAULT_IMPLEMENTATION_NAME;
@@ -1987,19 +1987,17 @@ public class ServiceLocatorImpl implements ServiceLocator {
     private void reupClassAnalyzers() {
         List<ServiceHandle<?>> allAnalyzers = protectedGetAllServiceHandles(ClassAnalyzer.class);
 
-        synchronized (classAnalyzerLock) {
-            classAnalyzers.clear();
+        classAnalyzers.clear();
 
-            for (ServiceHandle<?> handle : allAnalyzers) {
-                ActiveDescriptor<?> descriptor = handle.getActiveDescriptor();
-                String name = descriptor.getName();
-                if (name == null) continue;
+        for (ServiceHandle<?> handle : allAnalyzers) {
+            ActiveDescriptor<?> descriptor = handle.getActiveDescriptor();
+            String name = descriptor.getName();
+            if (name == null) continue;
 
-                ClassAnalyzer created = ((ServiceHandle<ClassAnalyzer>) handle).getService();
-                if (created == null) continue;
+            ClassAnalyzer created = ((ServiceHandle<ClassAnalyzer>) handle).getService();
+            if (created == null) continue;
 
-                classAnalyzers.put(name, created);
-            }
+            classAnalyzers.put(name, created);
         }
     }
 
@@ -2399,20 +2397,26 @@ public class ServiceLocatorImpl implements ServiceLocator {
 
     @Override
     public String getDefaultClassAnalyzerName() {
-        synchronized (classAnalyzerLock) {
+        rLock.lock();
+        try {
             return defaultClassAnalyzer;
+        } finally {
+            rLock.unlock();
         }
     }
 
     @Override
     public void setDefaultClassAnalyzerName(String defaultClassAnalyzer) {
-        synchronized (classAnalyzerLock) {
+        wLock.lock();
+        try {
             if (defaultClassAnalyzer == null) {
                 this.defaultClassAnalyzer = ClassAnalyzer.DEFAULT_IMPLEMENTATION_NAME;
             }
             else {
                 this.defaultClassAnalyzer = defaultClassAnalyzer;
             }
+        } finally {
+            wLock.unlock();
         }
     }
     
@@ -2441,12 +2445,16 @@ public class ServiceLocatorImpl implements ServiceLocator {
 
     /* package */ ClassAnalyzer getAnalyzer(String name, Collector collector) {
         ClassAnalyzer retVal;
-        synchronized (classAnalyzerLock) {
+
+        rLock.lock();
+        try {
             if (name == null) {
                 name = defaultClassAnalyzer ;
             }
 
             retVal = classAnalyzers.get(name);
+        } finally {
+            rLock.unlock();
         }
 
         if (retVal == null) {
