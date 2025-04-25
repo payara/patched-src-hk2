@@ -23,7 +23,7 @@
     <parent>
         <groupId>org.glassfish.hk2</groupId>
         <artifactId>hk2-xml-parent</artifactId>
-        <version>4.0.0-M3.payara-p2</version>
+        <version>4.0.0-M3.payara-p3-SNAPSHOT</version>
     </parent>
 
     <artifactId>hk2-xml</artifactId>
