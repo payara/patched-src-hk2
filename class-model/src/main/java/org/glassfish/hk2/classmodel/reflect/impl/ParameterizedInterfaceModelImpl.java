@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2024 Oracle and/or its affiliates. All rights reserved.
  *
  * This program and the accompanying materials are made available under the
  * terms of the Eclipse Public License v. 2.0, which is available at
@@ -22,6 +22,7 @@ import org.glassfish.hk2.classmodel.reflect.ParameterizedInterfaceModel;
 import java.util.*;
 import java.util.stream.Collectors;
 import org.glassfish.hk2.classmodel.reflect.ExtensibleType;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Implementation of the {@link ParameterizedInterfaceModel}
@@ -30,6 +31,7 @@ import org.glassfish.hk2.classmodel.reflect.ExtensibleType;
  */
 class ParameterizedInterfaceModelImpl implements ParameterizedInterfaceModel {
 
+    private final ReentrantLock lock = new ReentrantLock();
     final TypeProxy<ExtensibleType> rawInterface;
     final List<ParameterizedInterfaceModel> parameterizedTypes = new ArrayList<>();
 
@@ -37,8 +39,13 @@ class ParameterizedInterfaceModelImpl implements ParameterizedInterfaceModel {
         this.rawInterface = rawInterface;
     }
 
-    synchronized void addParameterizedType(ParameterizedInterfaceModel type) {
-        parameterizedTypes.add(type);
+    void addParameterizedType(ParameterizedInterfaceModel type) {
+        lock.lock();
+        try {
+            parameterizedTypes.add(type);
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
