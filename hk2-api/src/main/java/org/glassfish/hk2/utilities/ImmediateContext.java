@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, 2024 Oracle and/or its affiliates. All rights reserved.
  *
  * This program and the accompanying materials are made available under the
  * terms of the Eclipse Public License v. 2.0, which is available at
@@ -23,6 +23,8 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -48,6 +50,9 @@ import org.glassfish.hk2.internal.ImmediateLocalLocatorFilter;
  */
 @Singleton @Visibility(DescriptorVisibility.LOCAL)
 public class ImmediateContext implements Context<Immediate>{
+
+    private final ReentrantLock lock = new ReentrantLock();
+    private final Condition notEmpty = lock.newCondition();
     private final HashMap<ActiveDescriptor<?>, HandleAndService> currentImmediateServices = new HashMap<ActiveDescriptor<?>, HandleAndService>();
     private final HashMap<ActiveDescriptor<?>, Long> creating = new HashMap<ActiveDescriptor<?>, Long>();
     
@@ -76,7 +81,8 @@ public class ImmediateContext implements Context<Immediate>{
             ServiceHandle<?> root) {
         U retVal = null;
         
-        synchronized (this) {
+        lock.lock();
+        try {
             HandleAndService has = currentImmediateServices.get(activeDescriptor);
             if (has != null) {
                 return (U) has.getService();
@@ -91,7 +97,7 @@ public class ImmediateContext implements Context<Immediate>{
                 }
                 
                 try {
-                    this.wait();
+                    notEmpty.await();
                 }
                 catch (InterruptedException ie) {
                     throw new MultiException(ie);
@@ -105,13 +111,16 @@ public class ImmediateContext implements Context<Immediate>{
             }
             
             creating.put(activeDescriptor, Thread.currentThread().getId());
+        } finally {
+            lock.unlock();
         }
         
         try {
             retVal = activeDescriptor.create(root);
         }
         finally {
-            synchronized (this) {
+            lock.lock();
+            try {
                 ServiceHandle<?> discoveredRoot = null;
                 if (root != null) {
                     if (root.getActiveDescriptor().equals(activeDescriptor)) {
@@ -125,6 +134,8 @@ public class ImmediateContext implements Context<Immediate>{
                 
                 creating.remove(activeDescriptor);
                 this.notifyAll();
+            } finally {
+                lock.unlock();
             }
             
         }
@@ -137,8 +148,13 @@ public class ImmediateContext implements Context<Immediate>{
      * @return true if this service has been created
      */
     @Override
-    public synchronized boolean containsKey(ActiveDescriptor<?> descriptor) {
-        return currentImmediateServices.containsKey(descriptor);
+    public boolean containsKey(ActiveDescriptor<?> descriptor) {
+        lock.lock();
+        try {
+            return currentImmediateServices.containsKey(descriptor);
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
@@ -158,7 +174,8 @@ public class ImmediateContext implements Context<Immediate>{
             errorHandlers = locator.getAllServices(ImmediateErrorHandler.class);
         }
         
-        synchronized (this) {
+        lock.lock();
+        try {
             HandleAndService has = currentImmediateServices.remove(descriptor);
             Object instance = has.getService();
         
@@ -176,6 +193,8 @@ public class ImmediateContext implements Context<Immediate>{
                 }
             }
             
+        } finally {
+            lock.unlock();
         }
         
     }
@@ -197,7 +216,8 @@ public class ImmediateContext implements Context<Immediate>{
     public void shutdown() {
         List<ImmediateErrorHandler> errorHandlers = locator.getAllServices(ImmediateErrorHandler.class);
         
-        synchronized (this) {
+        lock.lock();
+        try {
             for (Map.Entry<ActiveDescriptor<?>, HandleAndService> entry :
                 new HashSet<Map.Entry<ActiveDescriptor<?>, HandleAndService>>(currentImmediateServices.entrySet())) {
                 HandleAndService has = entry.getValue();
@@ -214,6 +234,8 @@ public class ImmediateContext implements Context<Immediate>{
             }
             
             
+        } finally {
+            lock.unlock();
         }
     }
     
@@ -250,11 +272,12 @@ public class ImmediateContext implements Context<Immediate>{
         LinkedHashSet<ActiveDescriptor<?>> newFullSet = new LinkedHashSet<ActiveDescriptor<?>>(inScopeAndInThisLocator);
         LinkedHashSet<ActiveDescriptor<?>> addMe = new LinkedHashSet<ActiveDescriptor<?>>();
         
-        synchronized (this) {
+        lock.lock();
+        try {
             // First thing to do is wait until all the things in-flight have gone
             while (creating.size() > 0) {
                 try {
-                    this.wait();
+                    notEmpty.await();
                 }
                 catch (InterruptedException ie) {
                     throw new RuntimeException(ie);
@@ -282,6 +305,8 @@ public class ImmediateContext implements Context<Immediate>{
                     destroyOne(gone, errorHandlers);
                 }
             }
+        } finally {
+            lock.unlock();
         }
         
         for (ActiveDescriptor<?> ad : addMe) {
