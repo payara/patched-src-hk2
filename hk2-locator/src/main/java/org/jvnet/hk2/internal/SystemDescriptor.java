@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2024 Oracle and/or its affiliates. All rights reserved.
  *
  * This program and the accompanying materials are made available under the
  * terms of the Eclipse Public License v. 2.0, which is available at
@@ -27,6 +27,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.glassfish.hk2.api.ActiveDescriptor;
 import org.glassfish.hk2.api.Descriptor;
@@ -71,7 +73,9 @@ public class SystemDescriptor<T> implements ActiveDescriptor<T>, Closeable {
     private boolean preAnalyzed = false;
     private volatile boolean closed = false;
 
-    private final Object cacheLock = new Object();
+    private final ReentrantLock lock = new ReentrantLock();
+    private final ReentrantLock cacheLock = new ReentrantLock();
+    private final Condition notReifyingCondition = lock.newCondition();
     private boolean cacheSet = false;
     private T cachedValue;
 
@@ -286,9 +290,12 @@ public class SystemDescriptor<T> implements ActiveDescriptor<T>, Closeable {
      */
     @Override
     public void setCache(T cacheMe) {
-        synchronized (cacheLock) {
+        cacheLock.lock();
+        try {
             cachedValue = cacheMe;
             cacheSet = true;
+        } finally {
+            cacheLock.unlock();
         }
 
     }
@@ -298,9 +305,12 @@ public class SystemDescriptor<T> implements ActiveDescriptor<T>, Closeable {
      */
     @Override
     public void releaseCache() {
-        synchronized (cacheLock) {
+        cacheLock.lock();
+        try {
             cacheSet = false;
             cachedValue = null;
+        } finally {
+            cacheLock.unlock();
         }
 
     }
@@ -313,9 +323,12 @@ public class SystemDescriptor<T> implements ActiveDescriptor<T>, Closeable {
         // This is safe because once a descriptor is
         // reified it is never un-reified
         if (reified) return true;
-
-        synchronized (this) {
+        
+        lock.lock();
+        try {
             return reified;
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -549,9 +562,12 @@ public class SystemDescriptor<T> implements ActiveDescriptor<T>, Closeable {
 
     private void checkState() {
         if (reified) return;
-
-        synchronized(this) {
+        
+        lock.lock();
+        try {
             if (!reified) throw new IllegalStateException();
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -645,7 +661,8 @@ public class SystemDescriptor<T> implements ActiveDescriptor<T>, Closeable {
     /* package */ void reify(Class<?> implClass, Collector collector) {
         if (reified) return;
 
-        synchronized(this) {
+        lock.lock();
+        try {
             if (reified) return;
 
             while (reifying) {
@@ -660,6 +677,8 @@ public class SystemDescriptor<T> implements ActiveDescriptor<T>, Closeable {
 
             if (reified) return;
             reifying = true;
+        } finally {
+            lock.unlock();
         }
 
         try {
@@ -670,9 +689,10 @@ public class SystemDescriptor<T> implements ActiveDescriptor<T>, Closeable {
             internalReify(implClass, collector);
         }
         finally {
-            synchronized (this) {
+            lock.lock();
+            try {
                 reifying = false;
-                this.notifyAll();
+                notReifyingCondition.signalAll();
 
                 if (!collector.hasErrors()) {
                     reified = true;
@@ -680,6 +700,8 @@ public class SystemDescriptor<T> implements ActiveDescriptor<T>, Closeable {
                 else {
                     collector.addThrowable(new IllegalArgumentException("Errors were discovered while reifying " + this));
                 }
+            } finally {
+                lock.unlock();
             }
         }
 
@@ -817,11 +839,14 @@ public class SystemDescriptor<T> implements ActiveDescriptor<T>, Closeable {
     public boolean close() {
         if (closed) return true;
         
-        synchronized (this) {
+        lock.lock();
+        try {
             if (closed) return true;
             
             closed = true;
             return false;
+        } finally {
+            lock.unlock();
         }
     }
 
