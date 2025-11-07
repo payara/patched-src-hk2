@@ -133,7 +133,7 @@ public class ImmediateContext implements Context<Immediate>{
                 }
                 
                 creating.remove(activeDescriptor);
-                this.notifyAll();
+                notEmpty.signalAll();
             } finally {
                 lock.unlock();
             }

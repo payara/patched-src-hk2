@@ -181,7 +181,6 @@ public abstract class OperationContext<T extends Annotation> implements Context<
                 }
                 
                 creating.remove(activeDescriptor);
-                this.notifyAll();
                 condition.signalAll();
             } finally {
                 lock.unlock();

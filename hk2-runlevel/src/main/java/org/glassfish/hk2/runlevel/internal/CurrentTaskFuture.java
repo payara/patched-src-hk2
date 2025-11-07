@@ -1028,8 +1028,8 @@ public class CurrentTaskFuture implements ChangeableRunLevelFuture {
                         asyncContext.jobDone();
                         
                         done = true;
-                        
-                        this.notifyAll();
+
+                        lockCondition.signalAll();
                         
                         return;
                     }
@@ -1433,7 +1433,7 @@ public class CurrentTaskFuture implements ChangeableRunLevelFuture {
                     try {
                         parent.lastError = th;
                         parent.lastErrorDescriptor = job;
-                        queueLock.notify();
+                        queueCondition.signal();
                     } finally {
                         queueLock.unlock();
                     }

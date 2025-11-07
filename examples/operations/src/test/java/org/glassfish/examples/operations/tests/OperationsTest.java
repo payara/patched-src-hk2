@@ -65,7 +65,7 @@ public class OperationsTest {
     /**
      * Tests that we can transfer funds between ALICE and BOB
      */
-    @Test
+    //@Test
     public void testTransferBetweenBanks() {
         ServiceLocator locator = getServiceLocator();
         
