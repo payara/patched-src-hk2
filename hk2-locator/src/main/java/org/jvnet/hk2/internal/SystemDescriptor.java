@@ -667,7 +667,7 @@ public class SystemDescriptor<T> implements ActiveDescriptor<T>, Closeable {
 
             while (reifying) {
                 try {
-                    this.wait();
+                    notReifyingCondition.await();
                 }
                 catch (InterruptedException e) {
                     collector.addThrowable(e);

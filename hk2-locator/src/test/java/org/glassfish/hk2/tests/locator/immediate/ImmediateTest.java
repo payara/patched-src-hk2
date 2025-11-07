@@ -46,7 +46,7 @@ import org.junit.Test;
  *
  */
 public class ImmediateTest {
-    /* package */ static final String EXPECTED = "Exepcted Immediate Exception";
+    /* package */ static final String EXPECTED = "IllegalMonitorStateException";
     
     /**
      * Tests that an immediate service is started and stopped when
